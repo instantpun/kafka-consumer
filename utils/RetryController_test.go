@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	"testing"
-	// "github.com/instantpun/kafka-consumer/utils"
 )
 
 type ControllerIncrementTest struct{
@@ -21,7 +20,6 @@ var (
 
 var CtlIncrementTests = []ControllerIncrementTest{
 	{fmt.Sprintf("RetryConfig%v", NullController_00),   NullController_00,   1},
-	// {fmt.Sprintf("RetryConfig%v", NullController_01),   NullController_01,   1},
 	{fmt.Sprintf("RetryConfig%v", LinearController_00), LinearController_00, 1},
 	{fmt.Sprintf("RetryConfig%v", ExpController_00), ExpController_00, 2},
 	{fmt.Sprintf("RetryConfig%v", ExpController_01), ExpController_01, 2},
