@@ -6,16 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
-	"math/rand"
-	"encoding/json"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
 	"github.com/instantpun/kafka-consumer/utils"
 )
 
 // setup RetryController
-var BackoffCtl utils.RetryConfig = (*utils.NewRetryConfig("exponential"))
+var BackoffCtl, _ = utils.NewRetryConfig("exponential")
 
 type ConsumerController struct {
 	Run bool
@@ -44,15 +40,15 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		// But we choose to terminate the application
 		// if all brokers are down
 		
-		switch errCode := evt.Code() {
+		switch errCode := evt.Code(); errCode {
 		case kafka.ErrAllBrokersDown:
-			cc.Run = False
+			cc.Run = false
 		default:
 			fmt.Printf("Recieved unhandled error: %v", errCode)
 		}
 	case kafka.OffsetsCommitted:
 		// what do here?
-		continue
+		fmt.Println("OffsetsCommitted")
 	case kafka.PartitionEOF:
 		fmt.Printf("Reached end of message log %v\n", evt)
 	case nil:
@@ -67,6 +63,8 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		// - OAuthBearerTokenRefresh
 		fmt.Printf("Ingored %v", evt)
 	}
+
+	return nil
 }
 
 
@@ -87,6 +85,7 @@ func main() {
 	groupId := os.Args[3]
 	topics := os.Args[4:]
 
+	fmt.Printf("%v\n", cfgFile) // TODO: implement config loader
 	instanceId := os.Getenv("GROUP_INSTANCE_ID")
 	if instanceId == "" {
 		instanceId, _ = os.Hostname()
@@ -102,25 +101,24 @@ func main() {
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM) // listen for process signals and add to channel
 
-	consumerConfig, err := loadConfig(cfgFile)
-	log.Infof("%v", consumerConfig)
+	// consumerConfig, err := loadConfig(cfgFile)
+	// log.Infof("%v", consumerConfig)
 	// consumerConfig["bootstrap.servers"] = broker
 	// consumerConfig["group.id"] = groupId
 	// consumerConfig["group.instance.id"] = instanceId
-
 	
-	consumer, err := kafka.NewConsumer()
-
-	// consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
-	// 	"bootstrap.servers": broker,
-	// 	"broker.address.family":           "v4",
-	// 	"group.id":                        groupId,
-	// 	"group.instance.id":               instanceId,
-	// 	"session.timeout.ms":              6000,
-	// 	"go.events.channel.enable":        false,
-	// 	"go.application.rebalance.enable": true,
-	// 	"enable.partition.eof":            true,
-	// 	"auto.offset.reset":               "latest"})
+	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers":               broker,
+		"broker.address.family":           "v4",
+		"group.id":                        groupId,
+		"group.instance.id":               instanceId,
+		"session.timeout.ms":              6000,
+		"go.events.channel.enable":        false,
+		// uncomment to enable incremental rebalance:
+		// "go.application.rebalance.enable": true,
+		// "partition.assignment.strategy":   "cooperative-sticky",
+		"enable.partition.eof":            true,
+		"auto.offset.reset":               "earliest"})
 
 	if err != nil {
 		rootLogger.WithFields(log.Fields{"error": fmt.Sprintf("%v", err)}).Fatal("Failed to create consumer\n")
