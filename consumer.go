@@ -19,10 +19,11 @@ var BackoffCtl utils.RetryConfig = (*utils.NewRetryConfig("exponential"))
 
 type ConsumerController struct {
 	Run bool
+	LastError error
 }
 
-
-func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interface{}) {
+// TODO: handleEvent() needs testable output or state
+func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interface{}) error {
 
 	switch evt := event.(type) {
 	case *kafka.Message:
@@ -47,7 +48,7 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		case kafka.ErrAllBrokersDown:
 			cc.Run = False
 		default:
-			fmt.Printf("Recieved unhandle, d error: %v", errCode)
+			fmt.Printf("Recieved unhandled error: %v", errCode)
 		}
 	case kafka.OffsetsCommitted:
 		// what do here?
@@ -109,7 +110,6 @@ func main() {
 
 	
 	consumer, err := kafka.NewConsumer()
-
 
 	// consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 	// 	"bootstrap.servers": broker,
