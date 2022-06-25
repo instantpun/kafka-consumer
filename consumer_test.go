@@ -25,16 +25,19 @@ var (
 	}
 )
 
-
+// TODO: Need more 
 type EventHandlerTest struct {
 	Descriptor   string
 	InputEvent  *kafka.Event
-	Expected	 ConsumerController
+	Expected	 ???
 }
 
-func TestHandleEvent(t *testing.T, event interface{}) {
+// TODO: implement test table
+// var EventTests []EventHandlerTest{
+// 	{ NullMsg_00, },
+// 	{ SampleMsg_00 },
+// }
+
+func TestHandleEvent(t *testing.T, eht []EventHandlerTest) {
 	Consumer = &kafka.Consumer{}
-
-
-
 }
