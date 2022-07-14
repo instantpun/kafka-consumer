@@ -19,7 +19,28 @@ type RuntimeController struct {
 	RetryCtl *utils.RetryConfig
 }
 
-func handleEvent(rc *RuntimeController, consumer *kafka.Consumer, event interface{}) error {
+func proccessMessage(msg *kafka.Message) {
+
+	msgLogFields := log.Fields{
+		"topic":     msg.TopicPartition.Topic,
+		"partition": msg.TopicPartition.Partition,
+		"offset":    msg.TopicPartition.Offset,
+		"key":       msg.Key,
+		"value":     string(msg.Value),
+		"message_timestamp": fmt.Sprintf("%v", msg.Timestamp),
+	}
+	
+	RootLogger := RootLogger.WithFields(msgLogFields)
+	
+	if msg.Headers != nil {
+		headers := fmt.Sprintf("%v", msg.Headers)
+		RootLogger.WithFields(log.Fields{"headers": headers}).Info("Message received")
+	} else {
+		RootLogger.Info("Message received")
+	}
+}
+
+func handleEvent(rc *RuntimeController, event interface{}) error {
 
 	switch evt := event.(type) {
 	case *kafka.Message:
@@ -94,6 +115,7 @@ func main() {
 	groupId := os.Args[3]
 	topics := os.Args[4:]
 
+	if cfgFile != "" {}
 	instanceId := os.Getenv("GROUP_INSTANCE_ID")
 	if instanceId == "" {
 		instanceId, _ = os.Hostname()
@@ -159,29 +181,8 @@ func main() {
 			RootLogger.Info("Polling for latest events...")
 			event := consumer.Poll(100)
 
-			handleEvent(rc, consumer, event)
+			handleEvent(rc, event)
 		}
 	}
 
-}
-
-func proccessMessage(msg *kafka.Message) {
-
-	msgLogFields := log.Fields{
-		"topic":     msg.TopicPartition.Topic,
-		"partition": msg.TopicPartition.Partition,
-		"offset":    msg.TopicPartition.Offset,
-		"key":       msg.Key,
-		"value":     string(msg.Value),
-		"message_timestamp": fmt.Sprintf("%v", msg.Timestamp),
-	}
-	
-	RootLogger := RootLogger.WithFields(msgLogFields)
-	
-	if msg.Headers != nil {
-		headers := fmt.Sprintf("%v", msg.Headers)
-		RootLogger.WithFields(log.Fields{"headers": headers}).Info("Message received")
-	} else {
-		RootLogger.Info("Message received")
-	}
 }
