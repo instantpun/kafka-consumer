@@ -14,23 +14,21 @@ import (
 	"github.com/instantpun/kafka-consumer/utils"
 )
 
-// setup RetryController
-var BackoffCtl utils.RetryConfig
-
-type ConsumerController struct {
-	Run bool
+type RuntimeController struct {
+	Run 	 bool
+	RetryCtl utils.RetryConfig
 }
 
-func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interface{}) error {
+func handleEvent(rc *RuntimeController, consumer *kafka.Consumer, event interface{}) error {
 
 	switch evt := event.(type) {
 	case *kafka.Message:
-		// process message
 		fmt.Printf("%% Message on %s: %s", evt.TopicPartition, string(evt.Value))
 		if evt.Headers != nil {
 			fmt.Printf("%% Headers: %v", evt.Headers)
 		}
 
+		proccessMessage(evt)
 		if BackoffCtl.DelayCounter > 1 {
 			BackoffCtl.ResetDelay()
 		}
@@ -44,11 +42,11 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		
 		switch errCode := evt.Code(); errCode {
 		case kafka.ErrAllBrokersDown:
-			cc.Run = false
-			return errCode
+			rc.Run = false
+			return evt
 		default:
 			fmt.Printf("Recieved unhandle, d error: %v", errCode)
-			return errCode // WARN: this may not work, is return value from kafka.Error.Code() of type error?
+			return evt // WARN: this may not work, is return value from kafka.Error.Code() of type error?
 		}
 	case kafka.PartitionEOF:
 		fmt.Printf("Reached end of message log %v\n", evt)
@@ -60,13 +58,17 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		BackoffCtl.IncDelay()
 		return nil
 	case kafka.OffsetsCommitted:
-		fallthrough
+		fmt.Printf("Ignored %v", evt)
+		return nil
 	case kafka.AssignedPartitions:
-		fallthrough
+		fmt.Printf("Ignored %v", evt)
+		return nil
 	case kafka.RevokedPartitions:
-		fallthrough
+		fmt.Printf("Ignored %v", evt)
+		return nil
 	case kafka.OAuthBearerTokenRefresh:
-		fallthrough
+		fmt.Printf("Ignored %v", evt)
+		return nil
 	default:
 		fmt.Printf("Ignored %v", evt)
 		return nil
@@ -82,7 +84,8 @@ func main() {
 	RootLogger := log.WithFields(RootLogFields)
 	// testLogger.Info("test")
 
-	BackoffCtl, _ = (*utils.NewRetryConfig("exponential"))
+	tmp, _ := utils.NewRetryConfig("exponential")
+	BackoffCtl = (*tmp)
 
 	if len(os.Args) < 3 {
 		host, _ := os.Hostname()
@@ -110,31 +113,31 @@ func main() {
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM) // listen for process signals and add to channel
 
-	consumerConfig, err := loadConfig(cfgFile)
-	log.Infof("%v", consumerConfig)
+	// consumerConfig, err := loadConfig(cfgFile)
+	// log.Infof("%v", consumerConfig)
 	// consumerConfig["bootstrap.servers"] = broker
 	// consumerConfig["group.id"] = groupId
 	// consumerConfig["group.instance.id"] = instanceId
 	
-	consumer, err := kafka.NewConsumer()
+	// consumer, err := kafka.NewConsumer()
 
 
-	// consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
-	// 	"bootstrap.servers": broker,
-	// 	"broker.address.family":           "v4",
-	// 	"group.id":                        groupId,
-	// 	"group.instance.id":               instanceId,
-	// 	"session.timeout.ms":              6000,
-	// 	"go.events.channel.enable":        false,
-	// 	"go.application.rebalance.enable": true,
-	// 	"enable.partition.eof":            true,
-	// 	"auto.offset.reset":               "latest"})
+	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers": broker,
+		"broker.address.family":           "v4",
+		"group.id":                        groupId,
+		"group.instance.id":               instanceId,
+		"session.timeout.ms":              6000,
+		"go.events.channel.enable":        false,
+		"go.application.rebalance.enable": true,
+		"enable.partition.eof":            true,
+		"auto.offset.reset":               "latest"})
 
 	if err != nil {
-		rootLogger.WithFields(log.Fields{"error": fmt.Sprintf("%v", err)}).Fatal("Failed to create consumer\n")
+		RootLogger.WithFields(log.Fields{"error": fmt.Sprintf("%v", err)}).Fatal("Failed to create consumer\n")
 	}
 
-	rootLogger.WithFields(log.Fields{"consumer_name": fmt.Sprintf("%v", consumer)}).Info("Created Consumer\n")
+	RootLogger.WithFields(log.Fields{"consumer_name": fmt.Sprintf("%v", consumer)}).Info("Created Consumer\n")
 
 	err = consumer.SubscribeTopics(topics, nil)
 
@@ -143,25 +146,24 @@ func main() {
 		consumer.Close()
 	}()
 
-	cc := &ConsumerController{Run: true}
+	rc := &RuntimeController{Run: true}
 
-	for cc.Run {
-		rootLogger.Info("Processing event stream...")
+	for rc.Run {
+		RootLogger.Info("Processing event stream...")
 		select {
 		case sig := <-sigchan:
 			s := fmt.Sprintf("%v", sig)
 			log.WithFields(log.Fields{"signal": s}).Warn("Caught termination signal. Terminating...") 
-			cc.Run = false
+			rc.Run = false
 		default:
-			rootLogger.Info("Polling for latest events...")
+			RootLogger.Info("Polling for latest events...")
 			event := consumer.Poll(100)
 
-			handleEvent(cc, consumer, event)
+			handleEvent(rc, consumer, event)
 		}
 	}
 
 }
-
 
 func proccessMessage(msg *kafka.Message) {
 
@@ -174,12 +176,12 @@ func proccessMessage(msg *kafka.Message) {
 		"message_timestamp": fmt.Sprintf("%v", msg.Timestamp),
 	}
 	
-	rootLogger := rootLogger.WithFields(msgLogFields)
+	RootLogger := RootLogger.WithFields(msgLogFields)
 	
 	if msg.Headers != nil {
 		headers := fmt.Sprintf("%v", msg.Headers)
-		rootLogger.WithFields(log.Fields{"headers": headers}).Info("Message received")
+		RootLogger.WithFields(log.Fields{"headers": headers}).Info("Message received")
 	} else {
-		rootLogger.Info("Message received")
+		RootLogger.Info("Message received")
 	}
 }
