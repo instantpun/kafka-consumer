@@ -22,12 +22,11 @@ type ConsumerController struct {
 }
 
 
-func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interface{}) {
+func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interface{}) error {
 
 	switch evt := event.(type) {
 	case *kafka.Message:
 		// process message
-	
 		fmt.Printf("%% Message on %s: %s", evt.TopicPartition, string(evt.Value))
 		if evt.Headers != nil {
 			fmt.Printf("%% Headers: %v", evt.Headers)
@@ -36,6 +35,7 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		if BackoffCtl.DelayCounter > 1 {
 			BackoffCtl.ResetDelay()
 		}
+		return nil
 	case kafka.Error:
 		// Errors should generally be considered
 		// informational, the client will try to 
@@ -43,41 +43,48 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		// But we choose to terminate the application
 		// if all brokers are down
 		
-		switch errCode := evt.Code() {
+		switch errCode := evt.Code(); errCode {
 		case kafka.ErrAllBrokersDown:
 			cc.Run = False
 		default:
 			fmt.Printf("Recieved unhandle, d error: %v", errCode)
 		}
-	case kafka.OffsetsCommitted:
-		// what do here?
-		continue
+		return errCode // WARN: this may not work, is return value from kafka.Error.Code() of type error?
 	case kafka.PartitionEOF:
 		fmt.Printf("Reached end of message log %v\n", evt)
+		return nil
 	case nil:
 		fmt.Printf("No new events received %v\n", evt)
 		// sleep, then increase retry delay
 		BackoffCtl.Wait()
 		BackoffCtl.IncDelay()
+		return nil
+	case kafka.OffsetsCommitted:
+		fallthrough
+	case kafka.AssignedPartitions:
+		fallthrough
+	case kafka.RevokedPartitions:
+		fallthrough
+	case kafka.OAuthBearerTokenRefresh:
+		fallthrough
 	default:
-		// Events that will be ignored:
-		// - AssignedPartitions
-		// - RevokedPartitions
-		// - OAuthBearerTokenRefresh
-		fmt.Printf("Ingored %v", evt)
+		fmt.Printf("Ignored %v", evt)
+		return nil
 	}
 }
 
 
 func main() {
+
+	initLoggerDefaults()
 	
-	rootLogFields["program"] = "go-consumer"
-	rootLogger := log.WithFields(rootLogFields)
+	RootLogFields["program"] = "go-consumer"
+	RootLogger := log.WithFields(RootLogFields)
 	// testLogger.Info("test")
 
 	if len(os.Args) < 3 {
 		host, _ := os.Hostname()
-		rootLogger.WithFields(log.Fields{"host": host}).Fatalf("Usage: %s broker group topics...",
+		RootLogger.WithFields(log.Fields{"host": host}).Fatalf("Usage: %s broker group topics...",
 		os.Args[0])
 	}
 
@@ -91,12 +98,12 @@ func main() {
 		instanceId, _ = os.Hostname()
 	}
 
-	rootLogger = rootLogger.WithFields(log.Fields{
+	RootLogger = RootLogger.WithFields(log.Fields{
 		"group_id": groupId,
 		"instance_id": instanceId,
 		"topics": fmt.Sprintf("%v", topics), // not sure how to change into normal slice/list
 	})
-	rootLogger.Info("test")
+	RootLogger.Info("test")
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM) // listen for process signals and add to channel
@@ -106,7 +113,6 @@ func main() {
 	// consumerConfig["bootstrap.servers"] = broker
 	// consumerConfig["group.id"] = groupId
 	// consumerConfig["group.instance.id"] = instanceId
-
 	
 	consumer, err := kafka.NewConsumer()
 
