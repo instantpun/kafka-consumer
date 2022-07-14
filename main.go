@@ -15,12 +15,11 @@ import (
 )
 
 // setup RetryController
-var BackoffCtl utils.RetryConfig = (*utils.NewRetryConfig("exponential"))
+var BackoffCtl utils.RetryConfig
 
 type ConsumerController struct {
 	Run bool
 }
-
 
 func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interface{}) error {
 
@@ -45,11 +44,12 @@ func handleEvent(cc *ConsumerController, consumer *kafka.Consumer, event interfa
 		
 		switch errCode := evt.Code(); errCode {
 		case kafka.ErrAllBrokersDown:
-			cc.Run = False
+			cc.Run = false
+			return errCode
 		default:
 			fmt.Printf("Recieved unhandle, d error: %v", errCode)
+			return errCode // WARN: this may not work, is return value from kafka.Error.Code() of type error?
 		}
-		return errCode // WARN: this may not work, is return value from kafka.Error.Code() of type error?
 	case kafka.PartitionEOF:
 		fmt.Printf("Reached end of message log %v\n", evt)
 		return nil
@@ -81,6 +81,8 @@ func main() {
 	RootLogFields["program"] = "go-consumer"
 	RootLogger := log.WithFields(RootLogFields)
 	// testLogger.Info("test")
+
+	BackoffCtl, _ = (*utils.NewRetryConfig("exponential"))
 
 	if len(os.Args) < 3 {
 		host, _ := os.Hostname()
