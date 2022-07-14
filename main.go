@@ -6,17 +6,17 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
-	"math/rand"
-	"encoding/json"
+	// "time"
+	// "math/rand"
+	// "encoding/json"
+	// "io/ioutil"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
 	"github.com/instantpun/kafka-consumer/utils"
 )
 
 type RuntimeController struct {
 	Run 	 bool
-	RetryCtl utils.RetryConfig
+	RetryCtl *utils.RetryConfig
 }
 
 func handleEvent(rc *RuntimeController, consumer *kafka.Consumer, event interface{}) error {
@@ -29,8 +29,8 @@ func handleEvent(rc *RuntimeController, consumer *kafka.Consumer, event interfac
 		}
 
 		proccessMessage(evt)
-		if BackoffCtl.DelayCounter > 1 {
-			BackoffCtl.ResetDelay()
+		if rc.RetryCtl.DelayCounter > 1 {
+			rc.RetryCtl.ResetDelay()
 		}
 		return nil
 	case kafka.Error:
@@ -54,8 +54,8 @@ func handleEvent(rc *RuntimeController, consumer *kafka.Consumer, event interfac
 	case nil:
 		fmt.Printf("No new events received %v\n", evt)
 		// sleep, then increase retry delay
-		BackoffCtl.Wait()
-		BackoffCtl.IncDelay()
+		rc.RetryCtl.Wait()
+		rc.RetryCtl.IncDelay()
 		return nil
 	case kafka.OffsetsCommitted:
 		fmt.Printf("Ignored %v", evt)
@@ -82,10 +82,6 @@ func main() {
 	
 	RootLogFields["program"] = "go-consumer"
 	RootLogger := log.WithFields(RootLogFields)
-	// testLogger.Info("test")
-
-	tmp, _ := utils.NewRetryConfig("exponential")
-	BackoffCtl = (*tmp)
 
 	if len(os.Args) < 3 {
 		host, _ := os.Hostname()
@@ -146,7 +142,11 @@ func main() {
 		consumer.Close()
 	}()
 
-	rc := &RuntimeController{Run: true}
+	tmp, _ := utils.NewRetryConfig("exponential")
+	rc := &RuntimeController{
+		Run: true,
+		RetryCtl: tmp,
+	}
 
 	for rc.Run {
 		RootLogger.Info("Processing event stream...")
